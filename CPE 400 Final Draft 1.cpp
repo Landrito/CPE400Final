@@ -1,6 +1,8 @@
 #include <iostream>
 #include <string>
+#include <cstring>
 #include <map>
+#include <cstdlib>
 using namespace std;
 
 class Device{
@@ -19,7 +21,9 @@ class Router : public Device{
 
          if(rand() % 100 < 90){
             cout << "Successfully passed through router." << endl;
-            return next->getIP(url);
+            string IP = next->getIP(url);
+            cout << "Coming back through router." << endl;
+            return IP;  
          }
          else{
             cout << "Unsuccesful TCP transfer, request was lost" << endl;
@@ -36,7 +40,7 @@ class LocalDNS : public Device{
          routeToRootDNS = newRoute;
       }
 
-      virtual string getIP( const string & url)  {
+      virtual string getIP( const string & url){
          cout << "Request has reached local DNS Server." << endl;
 
          //check inside its map if it is there,
@@ -46,14 +50,20 @@ class LocalDNS : public Device{
             return IPIter->second;
          }
          else{
-            cout << "The IP Address does not exist within the local cache. Relay request to root DNS server." << endl;
+            cout << "The IP Address does not exist within the local cache.";
+            cout << " Relay request to root DNS server." << endl;
             string IP = routeToRootDNS->getIP(url);
-
-            cout << "Inserting IP address for " << url << " into the local DNS Cache." << endl;
-            localCache.insert( pair<string,string>(url, IP) );
-
-            cout << "Returning IP from local DNS." << endl;
-            return IP;
+            if( strcmp(IP.c_str(), "ERROR") != 0 ) {
+               cout << "Inserting IP address for " << url;
+               cout << " into the local DNS Cache." << endl;
+               localCache.insert( pair<string,string>(url, IP) );
+               cout << "Returning IP from local DNS." << endl;
+               return IP;
+            }
+            else{
+               cout << "Returning error. Query failed." << endl;
+               return IP;  
+            }
          }
          //If it is then return it
          //else traverse list of routers to get to rootDNS
@@ -72,14 +82,29 @@ class RootDNS : public Device{
       virtual string getIP( const string & url)  {
          cout << "Request has reached the Root DNS Server." << endl;
 
-         map<string, Device*>::iterator TLDRoute = mapOfRoutesToTLD.find(url);
+         // Parse url for website type (.com, .org, etc.)
+         string websiteType;
+         bool passedDot = false; 
+         for(int i = 0, size = url.size(); i < size; i++){
+            if(url[i] == '.' && passedDot == false){
+               passedDot = true;
+               i++;  
+            }
+            if(passedDot == true){
+               websiteType.push_back(url[i]);
+            }
+         }
+
+         map<string, Device*>::iterator TLDRoute = mapOfRoutesToTLD.find(websiteType);
          if( TLDRoute != mapOfRoutesToTLD.end() ){
             cout << "Appropriate TLD server exists. Relaying request to TLD DNS server." << endl;
-            return TLDRoute->second->getIP(url);
+            string IP = TLDRoute->second->getIP(url);
+            cout << "Going back through root DNS." << endl; 
+            return IP; 
          }
          else{
             cout << "Appropriate TLD server does not exist." << endl;
-            return string("TLD server does not exist");
+            return string("ERROR");
          }
       }
 
@@ -96,14 +121,23 @@ class TLDDNS : public Device{
       virtual string getIP( const string & url)  {
          cout << "Request has reached the TLD DNS Server." << endl;
 
-         map<string, Device*>::iterator AuthRoute = mapOfRoutesToAuthoritativeDNS.find(url);
+         // Parse url for domain name
+         string domainName;
+         for(int i = 0, size = url.size(); url[i] != '.' && i < size; i++){
+            domainName.push_back(url[i]);
+         }
+
+         map<string, Device*>::iterator AuthRoute = mapOfRoutesToAuthoritativeDNS.find(domainName);
          if( AuthRoute != mapOfRoutesToAuthoritativeDNS.end() ){
-            cout << "Appropriate authoritative server exists. Relaying request to corresponding authoritative DNS server." << endl;
-            return AuthRoute->second->getIP(url);
+            cout << "Appropriate authoritative server exists. ";
+            cout << "Relaying request to corresponding authoritative DNS server." << endl;
+            string IP = AuthRoute->second->getIP(url);
+            cout << "Going back through the TLD DNS" << endl; 
+            return IP; 
          }
          else{
             cout << "Appropriate authoritative server does not exist." << endl;
-            return string("Authoritative server does not exist");
+            return string("ERROR");
          }
       }
 
@@ -119,7 +153,7 @@ class AuthoritativeDNS : public Device{
 
       virtual string getIP( const string & url)  {
          cout << "Request has reached the Authoritative DNS Server." << endl;
-         cout << "Returning correct IP address" << endl;
+         cout << "Returning correct IP address." << endl;
          return IP;
       }
 
@@ -166,17 +200,10 @@ int main(int argc, char ** argv){
    string query;
 
    while(true){
-      cout << "Gimme dat url Batch: ";
+      cout << "Enter URL: ";
       cin >> query;
       cout << endl;
 
-      cout << client->getIP(query);
+      cout << client->getIP(query) << endl;
    }
-
 }
-
-
-
-
-
-
