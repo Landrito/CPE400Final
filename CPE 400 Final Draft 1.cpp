@@ -5,6 +5,10 @@
 #include <cstdlib>
 using namespace std;
 
+void wait(int time){
+   for(int i = 0; i < time * 100; i++) {}  
+}
+
 class Device{
    public:
       virtual string getIP( const string & url)  = 0;
@@ -19,16 +23,14 @@ class Router : public Device{
       virtual string getIP( const string & url)  {
          cout << "Request has reached router." << endl;
 
-         if(rand() % 100 < 90){
-            cout << "Successfully passed through router." << endl;
-            string IP = next->getIP(url);
-            cout << "Coming back through router." << endl;
-            return IP;  
+
+         while( rand() % 100 > 95 ){
+            cout << "TCP Connection failed. Retrying Connection." << endl;
          }
-         else{
-            cout << "Unsuccesful TCP transfer, request was lost" << endl;
-            return string("TCP ERROR");
-         }
+         cout << "Successfully passed through router." << endl;
+         string IP = next->getIP(url);
+         cout << "Coming back through router." << endl;
+         return IP;  
       }
    private:
       Device * next;
