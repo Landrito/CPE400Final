@@ -1,3 +1,10 @@
+/*
+CPE 400 Final Project
+
+Renee Iinuma, Kyle Ernest Lee, Ernest Landrito, Wesley Kepke.
+*/
+
+// Header files
 #include <iostream>
 #include <string>
 #include <cstring>
@@ -5,83 +12,112 @@
 #include <cstdlib>
 using namespace std;
 
-void wait(int time){
-   for(int i = 0; i < time * 100; i++) {}  
-}
-
+// Base class - "Device"
 class Device{
    public:
       virtual string getIP( const string & url)  = 0;
 };
 
+// Derived class - "Router"
 class Router : public Device{
    public:
+      // Assign next node in linked list of routers
       void setNext(Device * newNext){
          next = newNext;
       }
 
+      // Function to obtain IP address from router
       virtual string getIP( const string & url)  {
          cout << "Request has reached router." << endl;
 
-
-         while( rand() % 100 > 95 ){
-            cout << "TCP Connection failed. Retrying Connection." << endl;
+         // Calculate error, since DNS runs on UDP
+         while( rand() % 100 > 50 ){
+            cout << "UDP Connection failed. Retrying Connection." << endl;
          }
+
+         // No error, continue query 
          cout << "Successfully passed through router." << endl;
          string IP = next->getIP(url);
          cout << "Coming back through router." << endl;
+
+         // IP address found
          return IP;  
       }
+
    private:
+      // Devices will be linked to other devices
       Device * next;
 };
 
+// Derived class - "LocalDNS"
 class LocalDNS : public Device{
    public:
+      // Function to add a route from local DNS to root DNS
       void addRouteToRoot(Device * newRoute){
          routeToRootDNS = newRoute;
       }
 
+      // Obtain the IP address from the local DNS server
       virtual string getIP( const string & url){
+         // Output statements - request has reached local DNS server
          cout << "Request has reached local DNS Server." << endl;
 
-         //check inside its map if it is there,
+         // Check inside local DNS's map to see if the request is cached
          map<string, string>::iterator IPIter = localCache.find(url);
+
+         // Request is cached - query can be stopped here
          if( IPIter != localCache.end() ){
             cout << "The IP Address exists within the local cache. Returning IP." << endl;
             return IPIter->second;
          }
+
+         // Request is not cached - query must be continued
          else{
+            // Output statements - request is not cached - continue to root 
             cout << "The IP Address does not exist within the local cache.";
             cout << " Relay request to root DNS server." << endl;
+
+            // Attempt to obtain IP address 
             string IP = routeToRootDNS->getIP(url);
+
+            // IP address has been successfully located
             if( strcmp(IP.c_str(), "ERROR") != 0 ) {
+               // Output statements - request has now been cached in local DNS
                cout << "Inserting IP address for " << url;
                cout << " into the local DNS Cache." << endl;
                localCache.insert( pair<string,string>(url, IP) );
+
+               // IP address has been successfully returned
                cout << "Returning IP from local DNS." << endl;
                return IP;
             }
+
+            // IP address has been NOT successfully located
             else{
+               // Query for IP address has failed
                cout << "Returning error. Query failed." << endl;
                return IP;  
             }
          }
-         //If it is then return it
-         //else traverse list of routers to get to rootDNS
       }
+
+   // Local DNS contains a map and a pointer to the routers that lead to the root
    private:
       map<string, string> localCache; 
       Device * routeToRootDNS;
 };
 
+// Derived class - "RootDNS"
 class RootDNS : public Device{
    public:
+      // Function to add a route from the root DNS to a TLD DNS
       void addRouteToTLD( Device * newNext, string hostName){
          mapOfRoutesToTLD.insert( pair<string, Device*>(hostName, newNext) );
       }
 
+      // Obtain the IP address from the local DNS server
       virtual string getIP( const string & url)  {
+         // Output statements - request has reached the DNS server
          cout << "Request has reached the Root DNS Server." << endl;
 
          // Parse url for website type (.com, .org, etc.)
@@ -97,29 +133,39 @@ class RootDNS : public Device{
             }
          }
 
+         // Check to see if a route to the appropriate TLD server exists 
          map<string, Device*>::iterator TLDRoute = mapOfRoutesToTLD.find(websiteType);
+
+         // The route to a TLD server exists
          if( TLDRoute != mapOfRoutesToTLD.end() ){
+            // Output statements - TLD server exists 
             cout << "Appropriate TLD server exists. Relaying request to TLD DNS server." << endl;
             string IP = TLDRoute->second->getIP(url);
             cout << "Going back through root DNS." << endl; 
             return IP; 
          }
+
+         // The route to a TLD server does not exist
          else{
             cout << "Appropriate TLD server does not exist." << endl;
             return string("ERROR");
          }
       }
 
+   // Root DNS contains a map and a pointer to the routers that lead 
+   // to a TLD server
    private:
       map<string, Device*> mapOfRoutesToTLD;
 };
 
 class TLDDNS : public Device{
    public:
+      // Function to add a route from the TLD DNS to a authoritative DNS
       void addRouteToAuthoritative( Device * newNext, string domainName){
          mapOfRoutesToAuthoritativeDNS.insert( pair<string, Device*>(domainName, newNext) );
       }
 
+      // Obtain the IP address from the authoritative DNS server
       virtual string getIP( const string & url)  {
          cout << "Request has reached the TLD DNS Server." << endl;
 
@@ -129,65 +175,118 @@ class TLDDNS : public Device{
             domainName.push_back(url[i]);
          }
 
+         // Check to see if a route to the appropriate authoritative server exists          
          map<string, Device*>::iterator AuthRoute = mapOfRoutesToAuthoritativeDNS.find(domainName);
+
+         // The route to an authoritative server exists 
          if( AuthRoute != mapOfRoutesToAuthoritativeDNS.end() ){
+            // Output statements - authoritative server exists 
             cout << "Appropriate authoritative server exists. ";
             cout << "Relaying request to corresponding authoritative DNS server." << endl;
             string IP = AuthRoute->second->getIP(url);
-            cout << "Going back through the TLD DNS" << endl; 
+            cout << "Going back through the TLD DNS." << endl; 
             return IP; 
          }
+
+         // The route to an authoritative server exists
          else{
             cout << "Appropriate authoritative server does not exist." << endl;
             return string("ERROR");
          }
       }
 
+   // TLD DNS contains a map and a pointer to the routers that lead 
+   // to a authoritative server
    private:
       map<string, Device*> mapOfRoutesToAuthoritativeDNS;
 };
 
 class AuthoritativeDNS : public Device{
    public:
+      // Function to add an IP address to the authoritative DNS's map
       void addIP( const string & IPAddress){
          IP = IPAddress;
       }
 
+      // Function for acquiring the IP address from the authoritative DNS
       virtual string getIP( const string & url)  {
          cout << "Request has reached the Authoritative DNS Server." << endl;
          cout << "Returning correct IP address." << endl;
          return IP;
       }
 
+   // Authoritatie DNS will only hold IP adresses
    private:
       string IP;
 };
 
 Device * createListOfRouters(Device * endDevice, int numRouters){
    Device * current = endDevice;
+
+   // Create a new router and add to previously allocated node
+   // If no such node exists already, the linked list will need to be created
    for(int i = 0; i < numRouters; i++){
       Router * newRouter = new Router();
       newRouter->setNext(current);
       current = newRouter;
    }
+
+   // Return a pointer to the head of the newly allocated linked list
    return current;
 }
 
+// This function will initialize our network
 Device * intializeNetwork(){
+   TLDDNS * comTLD = new TLDDNS();
+   TLDDNS * eduTLD = new TLDDNS();
+   TLDDNS * netTLD = new TLDDNS();
+
+   // amazon
    AuthoritativeDNS * amazonAuth = new AuthoritativeDNS();
    amazonAuth->addIP(string("1.2.3.4"));
-
    Device * routeToAmazonAuth = createListOfRouters(amazonAuth, 5);
-
-   TLDDNS * comTLD = new TLDDNS();
    comTLD->addRouteToAuthoritative(routeToAmazonAuth, string("amazon"));
 
+   // google
+   AuthoritativeDNS * googleAuth = new AuthoritativeDNS();
+   googleAuth->addIP(string("11.22.33.44"));
+   Device * routetoGoogleAuth = createListOfRouters(googleAuth, 3);
+   comTLD->addRouteToAuthoritative(routetoGoogleAuth, string("google"));
+
+   // unr
+   AuthoritativeDNS * unrAuth = new AuthoritativeDNS();
+   unrAuth->addIP(string("123.22.455.23"));
+   Device * routetoUnrAuth = createListOfRouters(unrAuth, 4);
+   eduTLD->addRouteToAuthoritative(routetoUnrAuth, string("unr"));
+
+   // mit
+   AuthoritativeDNS * mitAuth = new AuthoritativeDNS();
+   mitAuth->addIP(string("122.44.683.35"));
+   Device * routetoMitAuth = createListOfRouters(mitAuth, 2);
+   eduTLD->addRouteToAuthoritative(routetoMitAuth, string("mit"));
+
+   // nexon
+   AuthoritativeDNS * nexonAuth = new AuthoritativeDNS();
+   nexonAuth->addIP(string("13.654.542.33"));
+   Device * routetoNexonAuth = createListOfRouters(nexonAuth, 6);
+   netTLD->addRouteToAuthoritative(routetoNexonAuth, string("nexon"));
+
+   // speedtest
+   AuthoritativeDNS * speedTestAuth = new AuthoritativeDNS();
+   speedTestAuth->addIP(string("15.934.932.90"));
+   Device * routetoSpeedTestAuth = createListOfRouters(speedTestAuth, 3);
+   netTLD->addRouteToAuthoritative(routetoSpeedTestAuth, string("speedtest"));
+
    Device * routeToComTLD = createListOfRouters(comTLD, 3);
+   Device * routeToEduTLD = createListOfRouters(eduTLD, 4);
+   Device * routeToNetTLD = createListOfRouters(netTLD, 7);
 
    RootDNS * root = new RootDNS();
    root->addRouteToTLD(routeToComTLD, "com");
+   root->addRouteToTLD(routeToEduTLD, "edu");
+   root->addRouteToTLD(routeToNetTLD, "net");
 
-   Device * routeToRoot = createListOfRouters(root, 4);
+   Device * routeToRoot = createListOfRouters(root, 7);
 
    LocalDNS * local = new LocalDNS();
    local->addRouteToRoot(routeToRoot);
@@ -197,15 +296,52 @@ Device * intializeNetwork(){
    return routeToLocal;
 }
 
-int main(int argc, char ** argv){
-   Device * client = intializeNetwork();
-   string query;
-
-   while(true){
-      cout << "Enter URL: ";
-      cin >> query;
-      cout << endl;
-
-      cout << client->getIP(query) << endl;
+bool determineIfNodeWantsToSend(){
+   // This function will determine whether or not a node wants to send
+   // something in our token ring network
+   if(rand() % 100 < 50){
+      return false;
    }
+   else{
+      return true; 
+   }
+}
+
+void tokenPassingMacProtocol(Device *arrayOfClients[]){
+   string query;  
+
+   // Simulate "taking turns" MAC protocol
+   for(int i = 0; i < 8; i++){
+      // Check if a node wants to send a query 
+      if(determineIfNodeWantsToSend() == true){
+         cout << endl <<"Node " << (i % 4) << " has token and wants to send." << endl;
+         cout << "Enter url: " << endl;
+
+         // Obtain input from the user 
+         cin >> query; 
+         cout << endl << "IP Address: " << arrayOfClients[i % 4]->getIP(query);
+         cout << endl;
+      }
+
+      else{
+         cout << endl << "Node " << (i % 4) << " has token but does not want";
+         cout << " to send." << endl;
+      } 
+   }
+
+   // Simulation has finished 
+   cout << endl << "Token passing protocol is finished." << endl;
+   cout << "All nodes have been traversed twice." << endl;  
+}
+
+int main(int argc, char ** argv){
+   // Initialize program with 4 clients 
+   Device *client[4];
+   client[0] = intializeNetwork();
+   client[1] = client[0];
+   client[2] = client[0];
+   client[3] = client[0]; 
+
+   // Perform the token passing protocol
+   tokenPassingMacProtocol(client); 
 }
