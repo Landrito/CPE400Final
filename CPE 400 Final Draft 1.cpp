@@ -10,30 +10,76 @@ Renee Iinuma, Kyle Ernest Lee, Ernest Landrito, Wesley Kepke.
 #include <cstring>
 #include <map>
 #include <cstdlib>
+#include <vector>
+#include <climits>
+#include <sys/time.h>
 using namespace std;
+
+//Basic Timer Class
+class Timer{
+   public:
+      void start()
+      {
+         gettimeofday( &startTime, NULL);
+      }
+      double stop()
+      {
+         gettimeofday( &stopTime, NULL);
+         duration = ( (double) stopTime.tv_sec + 
+                      (double) stopTime.tv_usec*0.000001 ) * 1000 -
+                  ( (double) startTime.tv_sec + 
+                   (double) startTime.tv_usec*0.000001 ) * 1000;
+         return duration;
+      }
+   private:
+      struct timeval startTime;
+      struct timeval stopTime;
+      double duration;
+};
 
 // Base class - "Device"
 class Device{
    public:
       virtual string getIP( const string & url)  = 0;
+      virtual int getCost() = 0;
+
+};
+Device * createListOfRouters(Device * endDevice, int numRouters);
+
+// Derived class - "Router"
+class Client : public Device{
+   public:
+      // Assign next node in linked list of routers
+      void setNext(Device * newNext) {
+         next = newNext;
+      }
+
+      virtual int getCost() {
+         return -1;
+      }
+
+      // Function to obtain IP address from router
+      virtual string getIP( const string & url)  {
+         return next->getIP(url);
+      }
+
+      // Devices will be linked to other devices
+      Device * next;
 };
 
 // Derived class - "Router"
 class Router : public Device{
    public:
       // Assign next node in linked list of routers
-      void setNext(Device * newNext){
+      void setNext(Device * newNext) {
          next = newNext;
       }
-
+      virtual int getCost() {
+         return rand() % 100 + 1;
+      }
       // Function to obtain IP address from router
       virtual string getIP( const string & url)  {
          cout << "Request has reached router." << endl;
-
-         // Calculate error, since DNS runs on UDP
-         while( rand() % 100 > 50 ){
-            cout << "UDP Connection failed. Retrying Connection." << endl;
-         }
 
          // No error, continue query 
          cout << "Successfully passed through router." << endl;
@@ -44,9 +90,64 @@ class Router : public Device{
          return IP;  
       }
 
-   private:
       // Devices will be linked to other devices
       Device * next;
+};
+
+class Routes : public Device{
+public:
+   //Gets the IP based on the best route
+   virtual string getIP(const string & url){
+      cout << "Calculating Best path" << endl;
+      Device * route = getShortestRoute();
+      cout << "Proceeding through shortest route" << endl;
+      return route->getIP(url);
+   }
+
+   //creates a random amount of routers between two main devices
+   void createRoutes(Device * endLocation,int numRoutes){
+      for(int i = 0; i < numRoutes; i++){
+         Routers.push_back(createListOfRouters(endLocation, rand() % 6 + 1));
+      }
+   }
+
+   //returns a stopping value
+   virtual int getCost() {
+         return -1;
+   }
+
+   //calculates the shortest route
+   Device * getShortestRoute(){
+      int shortestIndex = 0;
+      int shortestRouteLength = INT_MAX;
+      for(int i = 0; i < Routers.size(); i++){
+         int routeLength = calculateRoute(Routers[i]);
+         cout << "Route: " << i << " has cost of: " << routeLength << endl;
+         if( routeLength < shortestRouteLength ){
+            shortestRouteLength = routeLength;
+            shortestIndex = i;
+         }
+      }
+      cout << "Shortest Route has a cost of: " << shortestRouteLength << endl;
+      return Routers[shortestIndex];
+   }
+
+   //calculates the route to a specific device.
+   int calculateRoute( Device * Node ){
+      Device * current = Node;
+      int nodeCost = current->getCost();
+      int totalCost = 0;
+      while( nodeCost != -1 ){
+         totalCost += nodeCost;
+         current = ((Router*)current)->next;
+         nodeCost = current->getCost();
+      }
+
+      return totalCost;
+   }
+
+private:
+   vector<Device *> Routers;
 };
 
 // Derived class - "LocalDNS"
@@ -101,6 +202,10 @@ class LocalDNS : public Device{
          }
       }
 
+   virtual int getCost() {
+         return -1;
+   }
+
    // Local DNS contains a map and a pointer to the routers that lead to the root
    private:
       map<string, string> localCache; 
@@ -152,6 +257,10 @@ class RootDNS : public Device{
          }
       }
 
+   virtual int getCost() {
+         return -1;
+   }
+
    // Root DNS contains a map and a pointer to the routers that lead 
    // to a TLD server
    private:
@@ -195,6 +304,10 @@ class TLDDNS : public Device{
          }
       }
 
+   virtual int getCost() {
+         return -1;
+   }
+
    // TLD DNS contains a map and a pointer to the routers that lead 
    // to a authoritative server
    private:
@@ -214,6 +327,10 @@ class AuthoritativeDNS : public Device{
          cout << "Returning correct IP address." << endl;
          return IP;
       }
+
+   virtual int getCost() {
+         return -1;
+   }
 
    // Authoritatie DNS will only hold IP adresses
    private:
@@ -244,56 +361,70 @@ Device * intializeNetwork(){
    // amazon
    AuthoritativeDNS * amazonAuth = new AuthoritativeDNS();
    amazonAuth->addIP(string("1.2.3.4"));
-   Device * routeToAmazonAuth = createListOfRouters(amazonAuth, 5);
+   Device * routeToAmazonAuth = new Routes();
+   ((Routes*)routeToAmazonAuth)->createRoutes(amazonAuth, rand() % 7 + 1);
    comTLD->addRouteToAuthoritative(routeToAmazonAuth, string("amazon"));
 
    // google
    AuthoritativeDNS * googleAuth = new AuthoritativeDNS();
    googleAuth->addIP(string("11.22.33.44"));
-   Device * routetoGoogleAuth = createListOfRouters(googleAuth, 3);
+   Device * routetoGoogleAuth = new Routes();
+   ((Routes*)routetoGoogleAuth)->createRoutes(googleAuth, rand() % 6 + 1);
    comTLD->addRouteToAuthoritative(routetoGoogleAuth, string("google"));
 
    // unr
    AuthoritativeDNS * unrAuth = new AuthoritativeDNS();
    unrAuth->addIP(string("123.22.455.23"));
-   Device * routetoUnrAuth = createListOfRouters(unrAuth, 4);
+   Device * routetoUnrAuth = new Routes();
+   ((Routes*)routetoUnrAuth)->createRoutes(unrAuth, rand() % 6 + 1);
    eduTLD->addRouteToAuthoritative(routetoUnrAuth, string("unr"));
 
    // mit
    AuthoritativeDNS * mitAuth = new AuthoritativeDNS();
    mitAuth->addIP(string("122.44.683.35"));
-   Device * routetoMitAuth = createListOfRouters(mitAuth, 2);
+   Device * routetoMitAuth = new Routes();
+   ((Routes*)routetoMitAuth)->createRoutes(mitAuth, rand() % 6 + 1);
    eduTLD->addRouteToAuthoritative(routetoMitAuth, string("mit"));
 
    // nexon
    AuthoritativeDNS * nexonAuth = new AuthoritativeDNS();
    nexonAuth->addIP(string("13.654.542.33"));
-   Device * routetoNexonAuth = createListOfRouters(nexonAuth, 6);
+   Device * routetoNexonAuth = new Routes();
+   ((Routes*)routetoNexonAuth)->createRoutes(nexonAuth, rand() % 6 + 1);
    netTLD->addRouteToAuthoritative(routetoNexonAuth, string("nexon"));
 
    // speedtest
    AuthoritativeDNS * speedTestAuth = new AuthoritativeDNS();
    speedTestAuth->addIP(string("15.934.932.90"));
-   Device * routetoSpeedTestAuth = createListOfRouters(speedTestAuth, 3);
+   Device * routetoSpeedTestAuth = new Routes();
+   ((Routes*)routetoSpeedTestAuth)->createRoutes(speedTestAuth, rand() % 6 + 1);
    netTLD->addRouteToAuthoritative(routetoSpeedTestAuth, string("speedtest"));
 
-   Device * routeToComTLD = createListOfRouters(comTLD, 3);
-   Device * routeToEduTLD = createListOfRouters(eduTLD, 4);
-   Device * routeToNetTLD = createListOfRouters(netTLD, 7);
+   Device * routeToComTLD = new Routes();
+   ((Routes*)routeToComTLD)->createRoutes(comTLD, rand() % 6 + 1);
+   Device * routeToEduTLD = new Routes();
+   ((Routes*)routeToEduTLD)->createRoutes(eduTLD, rand() % 6 + 1);
+   Device * routeToNetTLD = new Routes();
+   ((Routes*)routeToNetTLD)->createRoutes(netTLD, rand() % 6 + 1);
 
    RootDNS * root = new RootDNS();
    root->addRouteToTLD(routeToComTLD, "com");
    root->addRouteToTLD(routeToEduTLD, "edu");
    root->addRouteToTLD(routeToNetTLD, "net");
 
-   Device * routeToRoot = createListOfRouters(root, 7);
+   Device * routeToRoot = new Routes();
+   ((Routes*)routeToRoot)->createRoutes(root, rand() % 6 + 1);
 
    LocalDNS * local = new LocalDNS();
    local->addRouteToRoot(routeToRoot);
 
-   Device * routeToLocal = createListOfRouters(local, 5);
+   Device * routeToLocal = new Routes();
+   ((Routes*)routeToLocal)->createRoutes(local, rand() % 6 + 1);;
 
-   return routeToLocal;
+   Client * client = new Client();
+   client->setNext(routeToLocal);
+
+   return ((Device*)client);
 }
 
 bool determineIfNodeWantsToSend(){
@@ -309,18 +440,26 @@ bool determineIfNodeWantsToSend(){
 
 void tokenPassingMacProtocol(Device *arrayOfClients[]){
    string query;  
+   Timer timer;
 
    // Simulate "taking turns" MAC protocol
-   for(int i = 0; i < 8; i++){
+   for(int i = 0; true; i++){
       // Check if a node wants to send a query 
       if(determineIfNodeWantsToSend() == true){
          cout << endl <<"Node " << (i % 4) << " has token and wants to send." << endl;
-         cout << "Enter url: " << endl;
+         cout << "Enter url (q quits the program): " << endl;
 
          // Obtain input from the user 
          cin >> query; 
-         cout << endl << "IP Address: " << arrayOfClients[i % 4]->getIP(query);
+
+         if(strcmp(query.c_str(), "q") == 0){
+            break;
+         }
+         timer.start();
+         string IP = arrayOfClients[i % 4]->getIP(query);
+         cout << endl << "IP Address: " << IP;
          cout << endl;
+         printf( "Query TIME = %f milliseconds.\n", timer.stop() );
       }
 
       else{
@@ -331,7 +470,6 @@ void tokenPassingMacProtocol(Device *arrayOfClients[]){
 
    // Simulation has finished 
    cout << endl << "Token passing protocol is finished." << endl;
-   cout << "All nodes have been traversed twice." << endl;  
 }
 
 int main(int argc, char ** argv){
