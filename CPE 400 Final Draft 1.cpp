@@ -13,6 +13,7 @@ Renee Iinuma, Kyle Ernest Lee, Ernest Landrito, Wesley Kepke.
 #include <vector>
 #include <climits>
 #include <sys/time.h>
+#include <cstdio>
 using namespace std;
 
 //Basic Timer Class
